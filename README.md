@@ -70,4 +70,91 @@ NAME                       READY   STATUS    RESTARTS   AGE
 kyverno-7dc7f46bd7-ntshk   1/1     Running   0          2m21s
 ```
 
+## Creating a New Rule
 
+One of the things I have run into in my daily job is not always knowing who to contact when things go wrong. Development teams don't always follow the rules and namespaces do not always get created with a Point of Contact. Our policy is to have namespaces annotated so the admin team knows who to reach out to when we see issues. I decided to see how I could enforce this with Kyverno.
+
+The following policy will check any namespace resources for the appropriate annotation. I currently have it set to `audit`. It will still create the namespace, but I should see a report indicating that the policy wasn't followed.
+
+```
+apiVersion : kyverno.io/v1  
+kind: ClusterPolicy
+metadata:
+  name: check-poc-annotation
+spec:
+  validationFailureAction: audit
+  rules:
+  - name: check-poc-annotation
+    match:
+      any:
+      - resources:
+          kinds: 
+          - Namespace
+    validate:
+      message: "All namespace resources need to be created with the following annotation: 'internal-poc'"
+      pattern:
+        metadata:
+          annotations:
+            internal-poc: "*"
+```
+
+I created two sample files to test the policy against.
+
+*ns-without-poc*
+```
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: no-poc
+spec: {}
+status: {}
+```
+
+*ns-with-poc*
+```
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: good-poc
+  annotations:
+    internal-poc: 'root@runlevl4.com'
+spec: {}
+status: {}
+```
+
+Next, I used the Kyverno CLI to test each manifest. You can see in the first example, the test failed. Excatly what I wanted.
+
+```
+./kyverno apply rules/rule-ns-poc.yaml --resource scenarios/ns-without-poc.yaml                                                                                                1 ✘
+
+Applying 1 policy to 1 resource...
+(Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
+
+policy check-poc-annotation -> resource default/Namespace/no-poc failed:
+1. check-poc-annotation: validation error: All namespace resources need to be created with the following annotation: 'internal-poc'. Rule check-poc-annotation failed at path /metadata/annotations/
+
+pass: 0, fail: 1, warn: 0, error: 0, skip: 0
+
+
+
+./kyverno apply rules/rule-ns-poc.yaml --resource scenarios/ns-with-poc.yaml                                                                                                     ✔
+
+Applying 1 policy to 1 resource...
+(Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
+
+pass: 1, fail: 0, warn: 0, error: 0, skip: 0
+```
+
+> When I tried creating the resource with the audit policy in place, I didn't see any reports generated. However, when I switched it to `enforce` mode, it did prevent the namespace from being created.
+
+```
+apply -f scenarios/ns-without-poc.yaml                                                                                                  ✔  kind-kind-kind/service-system ⎈
+Error from server: error when creating "scenarios/ns-without-poc.yaml": admission webhook "validate.kyverno.svc-fail" denied the request:
+
+resource Namespace//no-poc was blocked due to the following policies
+
+check-poc-annotation:
+  check-poc-annotation: 'validation error: All namespace resources need to be created
+    with the following annotation: ''internal-poc''. Rule check-poc-annotation failed
+    at path /metadata/annotations/'
+```
