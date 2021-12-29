@@ -1,0 +1,19 @@
+apiVersion : kyverno.io/v1  
+kind: ClusterPolicy
+metadata:
+  name: check-poc-annotation
+spec:
+  validationFailureAction: enforce
+  rules:
+  - name: check-poc-annotation
+    match:
+      any:
+      - resources:
+          kinds: 
+          - Namespace
+    validate:
+      message: "All namespace resources need to be created with the following annotation: 'internal-poc'"
+      pattern:
+        metadata:
+          annotations:
+            internal-poc: "*"
