@@ -1,0 +1,13 @@
+# This is a manifest you can use to test your policy.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: myapp
+  name: myapp
+  namespace: multi-teams
+spec:
+  containers:
+  - image: nginx
+    name: nginx
+  
