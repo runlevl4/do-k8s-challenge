@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: myapp
+  annotations:
+    internal-poc: "team-alpha@myco.com"
+  name: myapp
+  namespace: multi-teams
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        resources: {}
+status: {}

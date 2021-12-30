@@ -28,7 +28,7 @@ Now I can run all of my commands with `kdo` instead of my normal `k` alias.
 I decided to simply things so I'm setting everyihng up with a makefile. I created a target to deploy Kyverno and it installed without a hitch.
 
 ```
-make deploy-kyverno                                                                                                                                                            2 ✘
+$ make deploy-kyverno 
 kubectl --kubeconfig="k8s-challenge-kubeconfig.yaml" apply -f foundation/kyverno/install.yaml
 namespace/kyverno created
 customresourcedefinition.apiextensions.k8s.io/clusterpolicies.kyverno.io created
@@ -122,10 +122,10 @@ spec: {}
 status: {}
 ```
 
-Next, I used the Kyverno CLI to test each manifest. You can see in the first example, the test failed. Excatly what I wanted.
+Next, I used the Kyverno CLI to test each manifest. You can see in the first example, the test failed. Exactly what I wanted.
 
 ```
-./kyverno apply rules/rule-ns-poc.yaml --resource scenarios/ns-without-poc.yaml                                                                                                1 ✘
+$ ./kyverno apply rules/rule-ns-poc.yaml --resource scenarios/ns-without-poc.yaml                                                                                                1 ✘
 
 Applying 1 policy to 1 resource...
 (Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
@@ -137,18 +137,67 @@ pass: 0, fail: 1, warn: 0, error: 0, skip: 0
 
 
 
-./kyverno apply rules/rule-ns-poc.yaml --resource scenarios/ns-with-poc.yaml                                                                                                     ✔
-
-Applying 1 policy to 1 resource...
+$ ./kyverno apply rules/rule-ns-poc.yaml --resource scenarios/ns-with-poc.yaml Applying 1 policy to 1 resource...
 (Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
 
 pass: 1, fail: 0, warn: 0, error: 0, skip: 0
 ```
 
-> When I tried creating the resource with the audit policy in place, I didn't see any reports generated. However, when I switched it to `enforce` mode, it did prevent the namespace from being created.
+When policies are set to `audit` rather than `enforce` failures are logged either to a `policyreport` or `clusterpolicyreport` depending on the type of policy that was violated. In my case, I am creating cluster policies. You can see the output of my `clusterpolicyreport` here:
 
 ```
-apply -f scenarios/ns-without-poc.yaml                                                                                                  ✔  kind-kind-kind/service-system ⎈
+$ kdo get clusterpolicyreport clusterpolicyreport -o yaml 
+apiVersion: wgpolicyk8s.io/v1alpha2
+kind: ClusterPolicyReport
+metadata:
+  creationTimestamp: "2021-12-29T19:02:21Z"
+  generation: 16
+  name: clusterpolicyreport
+  resourceVersion: "1313831"
+  uid: 8d0413b8-45ef-4f2c-be70-665b4909697d
+results:
+- message: 'validation error: All namespace resources need to be created with the
+    following annotation: ''internal-poc''. Rule check-poc-annotation failed at path
+    /metadata/annotations/'
+  policy: check-poc-annotation
+  resources:
+  - apiVersion: v1
+    kind: Namespace
+    name: default
+    uid: e0de133c-bad2-4d49-ac77-9b0c63a1a2b5
+  result: fail
+  rule: check-poc-annotation
+  scored: true
+  source: Kyverno
+  timestamp:
+    nanos: 0
+    seconds: 1640821824
+- message: 'validation error: All namespace resources need to be created with the
+    following annotation: ''internal-poc''. Rule check-poc-annotation failed at path
+    /metadata/annotations/'
+  policy: check-poc-annotation
+  resources:
+  - apiVersion: v1
+    kind: Namespace
+    name: ingress-nginx
+    uid: f8fcc2d0-08ec-43ba-9d6e-e73305675c52
+  result: fail
+  rule: check-poc-annotation
+  scored: true
+  source: Kyverno
+  timestamp:
+    nanos: 0
+    seconds: 1640821824
+summary:
+  error: 0
+  fail: 2
+  pass: 0
+  skip: 0
+  warn: 0
+```
+
+```
+$ kdo apply -f scenarios/ns-without-poc.yaml  
 Error from server: error when creating "scenarios/ns-without-poc.yaml": admission webhook "validate.kyverno.svc-fail" denied the request:
 
 resource Namespace//no-poc was blocked due to the following policies
@@ -158,3 +207,80 @@ check-poc-annotation:
     with the following annotation: ''internal-poc''. Rule check-poc-annotation failed
     at path /metadata/annotations/'
 ```
+
+## Expaanding Policy Footprint
+
+One of the things we recently noticed is that some of the teams have split responsibilities between sub-teams. We can no longer assume that one team is reponsible for every deployment within a single namespace. So let's expand the previous example to track the same info for Team Alpha and Team Bravo. We'll exclude system namespaces from the policy.
+
+This time, we'll make a namespace-scoped policy. This policy will:
+
+- be scoped only to the `multi-teams` namespace
+- verify that the annotation has been specified
+- ensure that the POC starts with `team` (just an example, not really real-world)
+
+```
+apiVersion : kyverno.io/v1  
+kind: Policy
+metadata:
+  name: check-deployment-poc-annotation
+  namespace: multi-teams
+spec:
+  validationFailureAction: enforce
+  rules:
+  - name: check-poc-annotation
+    match:
+      any:
+      - resources:
+          kinds: 
+          - Deployment
+    validate:
+      message: "All Deployment resources need to be created with the following annotation: 'internal-poc'"
+      pattern:
+        metadata:
+          annotations:
+            internal-poc: "team*"
+```
+
+Creating a new Deployment without the appropriate annotation results in the same failure we saw previously with the namespace example.
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: myapp
+  annotations:
+    internal-poc: "team-alpha@myco.com"
+  name: myapp
+  namespace: multi-teams
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        resources: {}
+status: {}
+
+```
+
+Now we can run the test again and see that the manifest passes.
+
+```
+$ ./kyverno apply rules/rule-deploy-poc.yaml --resource scenarios/deploy-poc/deploy-no-poc.yaml
+Applying 1 policy to 1 resource...
+(Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
+
+pass: 1, fail: 0, warn: 0, error: 0, skip: 0
+```
+
+
+
