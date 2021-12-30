@@ -352,7 +352,7 @@ spec:
     name: nginx
 ```
 
-You can see that there aren't any resources specified. When we test it however, you can see that Kyverno has added them. It's also added MyCo's private registry to ensure that the image comes from our scanned registry rather than Docker Hub.
+You can see that there aren't any resources specified. When we test it, however, you can see that Kyverno has added them. It's also added MyCo's private registry to ensure that the image comes from our scanned registry rather than Docker Hub.
 
 ```
 $ ./kyverno apply rules/rule-deploy-enforce-limits.yaml --resource scenarios/mutate-limits/test-pod.yaml                                                                    ✔
