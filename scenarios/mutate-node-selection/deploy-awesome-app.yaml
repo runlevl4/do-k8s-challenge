@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: awesome-app
+    owner: mucho-big-corp
+  annotations:
+    internal-poc: "awesome-app-support@myco.com"
+  name: awesome-app
+  namespace: mucho-big-corp
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: awesome-app
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: awesome-app
+    spec:
+      containers:
+      - image: nginx
+        name: nginx

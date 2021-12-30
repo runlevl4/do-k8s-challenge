@@ -397,6 +397,78 @@ spec:
         memory: 250M
 ```
 
+## Node Selection
+
+Let's do one more example. We've just sold our premier product, Awesome App, to Mucho Big Corp. They're very security-conscious and have requested that their workloads be placed on dedicated nodes. We have labeled two nodes so we can direct any Mucho workloads to those nodes. We won't show it here, but we'll taint the nodes as well (in the real world) to prevent other workloads from being deployed on these dedicated nodes.
+
+```
+$ kdo get no -l workload=mucho-big-corp
+NAME                  STATUS   ROLES    AGE    VERSION
+k8s-challenge-uavgi   Ready    <none>   5d5h   v1.21.5
+k8s-challenge-uavgv   Ready    <none>   5d5h   v1.21.5
+```
+
+Let's take a look at the Deployment for this exercise.
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: awesome-app
+    owner: mucho-big-corp
+  annotations:
+    internal-poc: "awesome-app-support@myco.com"
+  name: awesome-app
+  namespace: mucho-big-corp
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: awesome-app
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: awesome-app
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+```
+
+We've added a new label to identify the owner of the resource so we can properly vet them.
+
+Checking the new pods, we can see that one of them got deployed to the wrong node.
+
+```
+$ kdo get po -o wide
+NAME                           READY   STATUS    RESTARTS   AGE   IP             NODE                  NOMINATED NODE   READINESS GATES
+awesome-app-8466d546c5-5c2hv   1/1     Running   0          34s   10.244.2.107   k8s-challenge-uavgi   <none>           <none>
+awesome-app-8466d546c5-97bjp   1/1     Running   0          35s   10.244.1.94    k8s-challenge-uavgv   <none>           <none>
+awesome-app-8466d546c5-fxprv   1/1     Running   0          34s   10.244.2.20    k8s-challenge-uavgi   <none>           <none>
+awesome-app-8466d546c5-kz8m6   1/1     Running   0          34s   10.244.0.8     k8s-challenge-uavg4   <none>           <none>
+```
+
+Now that we've verified that everything deployed correctly, let's delete the deployment, apply the policy, and re-apply.
+
+```
+$ kdo apply -f rules/rule-mutate-mucho-nodes.yaml
+policy.kyverno.io/enforce-mucho-node-selector created
+
+$ kdo apply -f scenarios/mutate-node-selection/deploy-awesome-app.yaml
+deployment.apps/awesome-app created
+
+$ kdo get po -o wide
+NAME                           READY   STATUS    RESTARTS   AGE   IP             NODE                  NOMINATED NODE   READINESS GATES
+awesome-app-8466d546c5-ct86w   1/1     Running   0          6s    10.244.2.20    k8s-challenge-uavgi   <none>           <none>
+awesome-app-8466d546c5-f7cbh   1/1     Running   0          6s    10.244.2.44    k8s-challenge-uavgi   <none>           <none>
+awesome-app-8466d546c5-pfpts   1/1     Running   0          6s    10.244.1.94    k8s-challenge-uavgv   <none>           <none>
+awesome-app-8466d546c5-x4ds2   1/1     Running   0          6s    10.244.1.110   k8s-challenge-uavgv   <none>           <none>
+```
+
+Perfect! Every pod is now deployed to one of Mucho Big Corp's nodes!
+
 ## Conclusion
 
 Overall, Kyverno is working pretty well. It took a little digging and prodding to get things working right (namely mutations) but it works like a dream. Looking forward to doing a more in-depth POC to explore its capabilities even further.

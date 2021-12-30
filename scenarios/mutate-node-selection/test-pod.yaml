@@ -1,0 +1,14 @@
+# This is a manifest you can use to test your policy.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: awesome-app
+    owner: mucho-big-corp
+  name: awesome-app
+  namespace: mucho-big-corp
+spec:
+  containers:
+  - image: nginx
+    name: nginx
+  
