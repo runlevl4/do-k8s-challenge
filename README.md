@@ -222,7 +222,7 @@ check-poc-annotation:
     at path /metadata/annotations/'
 ```
 
-## Expaanding Policy Footprint
+## Expanding Policy Footprint
 
 One of the things we recently noticed is that some of the teams have split responsibilities between sub-teams. We can no longer assume that one team is reponsible for every deployment within a single namespace. So let's expand the previous example to track the same info for Team Alpha and Team Bravo. We'll exclude system namespaces from the policy.
 
@@ -396,3 +396,7 @@ spec:
         cpu: 50m
         memory: 250M
 ```
+
+## Conclusion
+
+Overall, Kyverno is working pretty well. It took a little digging and prodding to get things working right (namely mutations) but it works like a dream. Looking forward to doing a more in-depth POC to explore its capabilities even further.
