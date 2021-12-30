@@ -208,6 +208,20 @@ check-poc-annotation:
     at path /metadata/annotations/'
 ```
 
+Great news! I just got blocked by my first policy! I tried to implicitly create a new namespace and the policy told me I couldn't do it.
+
+```
+$ kdo create ns multi-teams
+Error from server: admission webhook "validate.kyverno.svc-fail" denied the request:
+
+resource Namespace//multi-teams was blocked due to the following policies
+
+check-poc-annotation:
+  check-poc-annotation: 'validation error: All namespace resources need to be created
+    with the following annotation: ''internal-poc''. Rule check-poc-annotation failed
+    at path /metadata/annotations/'
+```
+
 ## Expaanding Policy Footprint
 
 One of the things we recently noticed is that some of the teams have split responsibilities between sub-teams. We can no longer assume that one team is reponsible for every deployment within a single namespace. So let's expand the previous example to track the same info for Team Alpha and Team Bravo. We'll exclude system namespaces from the policy.
@@ -275,12 +289,110 @@ status: {}
 Now we can run the test again and see that the manifest passes.
 
 ```
-$ ./kyverno apply rules/rule-deploy-poc.yaml --resource scenarios/deploy-poc/deploy-no-poc.yaml
+$ ./kyverno apply rules/rule-deploy-poc.yaml --resource scenarios/deploy-poc/deploy-with-poc.yaml
 Applying 1 policy to 1 resource...
 (Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
 
 pass: 1, fail: 0, warn: 0, error: 0, skip: 0
 ```
 
+## Mutation Policies
+
+This next example is more of a POC and not likely something I would do in real life. While I see the benefit of mutating webhooks, I don't think I like them in practice since the resources no longer match source control. For example, we're going to see if Kyverno can add resource limits if they weren't provided. If we do this when using a tool like ArgoCD, it will see the resource mismatch and want to sync to resolve it unless we tell it to ignore the difference. But then, that sort of defeats a purpose of having a GitOps tool like Argo.
+
+We're going to throw a couple of interesting techniques in this example:
+
+- We will mutate each container in the Pod with `foreach`
+- If the limits aren't specified, we'll add both CPU and memory
+
+Let's look at the rule now.
+
+```
+apiVersion : kyverno.io/v1  
+kind: Policy
+metadata:
+  name: enforce-deployment-resource-limits
+  namespace: multi-teams
+spec:
+  validationFailureAction: enforce
+  rules:
+  - name: enforce-deployment-resource-limits
+    match:
+      any:
+      - resources:
+          kinds: 
+          - Pod
+    mutate:
+      foreach:
+      - list: "request.object.spec.containers"
+        patchStrategicMerge:
+          spec:
+            containers:
+            - name: "{{ element.name }}" 
+              image: artifactory.my.com:5000/acr/{{ images.containers."{{element.name}}".path}}:{{images.containers."{{element.name}}".tag}}
+              resources:              
+                limits:
+                  +(cpu): 50m
+                  +(memory): 250M
+```
+
+I've made this a policy targeting Pods rather than the deployment since that's the ultimate resource being created. In order to test, I created a sample Pod manifest based on my Deployment.
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: myapp
+  name: myapp
+  namespace: multi-teams
+spec:
+  containers:
+  - image: nginx
+    name: nginx
+```
+
+You can see that there aren't any resources specified. When we test it however, you can see that Kyverno has added them. It's also added MyCo's private registry to ensure that the image comes from our scanned registry rather than Docker Hub.
+
+```
+$ ./kyverno apply rules/rule-deploy-enforce-limits.yaml --resource scenarios/mutate-limits/test-pod.yaml                                                                    ✔
+
+Applying 1 policy to 1 resource...
+(Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
+
+mutate policy enforce-deployment-resource-limits applied to multi-teams/Pod/myapp:
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: myapp
+  name: myapp
+  namespace: multi-teams
+spec:
+  containers:
+  - image: artifactory.myco.com:5000/acr/nginx:latest
+    name: nginx
+    resources:
+      limits:
+        cpu: 50m
+        memory: 250M
+
+---
+
+pass: 1, fail: 0, warn: 0, error: 0, skip: 2
+```
+
+And finally, when I deploy the resource, you can see that it's been added to the resulting manifes.
 
 
+```
+spec:
+  containers:
+  - image: artifactory.myco.com:5000/acr/nginx:latest
+    imagePullPolicy: Always
+    name: nginx
+    resources:
+      limits:
+        cpu: 50m
+        memory: 250M
+```

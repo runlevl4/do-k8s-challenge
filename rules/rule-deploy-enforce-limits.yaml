@@ -1,0 +1,26 @@
+apiVersion : kyverno.io/v1  
+kind: Policy
+metadata:
+  name: enforce-deployment-resource-limits
+  namespace: multi-teams
+spec:
+  validationFailureAction: enforce
+  rules:
+  - name: enforce-deployment-resource-limits
+    match:
+      any:
+      - resources:
+          kinds: 
+          - Pod
+    mutate:
+      foreach:
+      - list: "request.object.spec.containers"
+        patchStrategicMerge:
+          spec:
+            containers:
+            - name: "{{ element.name }}" 
+              image: artifactory.my.com:5000/acr/{{ images.containers."{{element.name}}".path}}:{{images.containers."{{element.name}}".tag}}
+              resources:              
+                limits:
+                  +(cpu): 50m
+                  +(memory): 250M
