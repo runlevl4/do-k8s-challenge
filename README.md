@@ -170,6 +170,24 @@ spec:
         name: nginx
 
 ---
+pass: 1, fail: 0, warn: 0, error: 0, skip: 2
+```
+
+Everything looks good! Well, sort of...
+
+```
+kdo get po
+NAME                              READY   STATUS         RESTARTS   AGE
+challenge-pass-6dc9569f98-m6sqt   0/1     ErrImagePull   0          7s
+```
+
+Even though the pod didn't start, it means my test was a success. Originally I was pulling `nginx` directly. But it doesn't exist in my DOCR registry so it can't find it.
+
+```
+registry.digitalocean.com/runlevl4/runlevl4/nginx:latest: not found
+```
+
+Let's fix the problem. We need to put the image into the registry.
 
 Note I also added a pull secret for the registry. Next, I tagged `nginx:latest` from my local registry for DOCR and pushed it.
 
@@ -187,32 +205,17 @@ e379e8aedd4d: Pushed
 latest: digest: sha256:ee89b00528ff4f02f2405e4ee221743ebc3f8e8dd0bfd5c4c20a2fa2aaa7ede3 size: 1570
 ```
 
-pass: 1, fail: 0, warn: 0, error: 0, skip: 2
+Now when I deploy the manifest, everything works and the image is pulled successfully!
+```
+$ kdo get po
+NAME                              READY   STATUS    RESTARTS   AGE
+challenge-pass-66db466f54-5tn4t   1/1     Running   0          3m40s
 ```
 
-Everything looks good! Well, sort of...
-
+And just a quick sanity check with a `describe` on the pod...
 ```
-kdo get po
-NAME                              READY   STATUS         RESTARTS   AGE
-challenge-pass-6dc9569f98-m6sqt   0/1     ErrImagePull   0          7s
-```
-
-Even though the pod didn't start, it means my test was a success. Originally I was pulling nginx directly. But it doesn't exist in my DOCR registry so it can't find it.
-
-```
-registry.digitalocean.com/runlevl4/runlevl4/nginx:latest: not found
-```
-
-> FULL DISCLOSURE
-> The mutation worked. The test works. However, when the Pod is actually created in the cluster, the registry name is getting doubled. That's a problem for another day.
-
-```
-# Test Generates
-image: registry.digitalocean.com/runlevl4/nginx:latest
-
-# Cluster Generates
-Back-off pulling image "registry.digitalocean.com/runlevl4/runlevl4/nginx:latest"
+  Normal  Pulling    4m36s  kubelet            Pulling image "registry.digitalocean.com/runlevl4/nginx:latest"
+  Normal  Pulled     4m35s  kubelet            Successfully pulled image "registry.digitalocean.com/runlevl4/nginx:latest" in 845.196253ms
 ```
 
 The source files for the manifests are located in the `challenge_tasks` folder along with the rules. Testing with the CLI, you can see that both files fail and pass appropriately.
