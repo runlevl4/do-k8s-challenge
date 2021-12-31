@@ -2,16 +2,20 @@ apiVersion : kyverno.io/v1
 kind: Policy
 metadata:
   name: check-deployment-poc-annotation
-  namespace: multi-teams
+  namespace: kyverno #multi-teams
 spec:
   validationFailureAction: enforce
   rules:
   - name: check-poc-annotation
     match:
-      any:
-      - resources:
-          kinds: 
-          - Deployment
+      resources:
+         kinds: 
+         - Deployment
+    exclude:
+      resources: 
+        namespaces:
+        - kube-system
+        - kyverno
     validate:
       message: "All Deployment resources need to be created with the following annotation: 'internal-poc'"
       pattern:
