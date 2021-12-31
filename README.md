@@ -23,7 +23,7 @@ Once my cluster was created, I downloaded the provided `kubectl` config file. I 
 
 Now I can run all of my commands with `kdo` instead of my normal `k` alias.
 
-### Intallying Kyverno
+### Installing Kyverno
 
 I decided to simply things so I'm setting everyihng up with a makefile. I created a target to deploy Kyverno and it installed without a hitch.
 
