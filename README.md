@@ -70,7 +70,174 @@ NAME                       READY   STATUS    RESTARTS   AGE
 kyverno-7dc7f46bd7-ntshk   1/1     Running   0          2m21s
 ```
 
-## Creating a New Rule
+## Challenge Objectives
+
+- mandatory labels for every deployment
+- image download only permitted from DOCR
+
+### Mandatory Labels
+
+I guess this could go two ways: a) block admission and for the user to add the label or b) mutate the resource and add it. I've decided to go with the validation option.
+
+Let's create the rule to add a new label to every deployment...
+
+```
+apiVersion : kyverno.io/v1  
+kind: ClusterPolicy
+metadata:
+  name: apply-label-to-deploy
+spec:
+  background: false
+  validationFailureAction: enforce
+  rules:  
+  - name: apply-label-to-deploy
+    match:
+      any:
+      - resources:
+          kinds: 
+          - Deployment
+    validate:
+      message: "All Deployment resources need to be created with the following label: 'desc' and a value of '2021-do-k8s-challenge'"
+      pattern:       
+        metadata:
+          labels:
+            desc: "2021-do-k8s-challenge"
+```
+
+I've set `background` to `false` so it only applies to new resources. Now let's mutate the resources to ensure that every image only comes from DOCR. We'll iterate through every container and modify it. We'll do this to the Pod rather than the Resource to make sure it is enforced on both managed and unmanaged resources. We will exclude specific namespaces.
+
+```
+apiVersion : kyverno.io/v1  
+kind: ClusterPolicy
+metadata:
+  name: enforce-docr
+spec:
+  validationFailureAction: enforce
+  rules:
+  - name: enforce-docr
+    match:
+      any:
+      - resources:
+          kinds: 
+          - Pod
+    exclude:
+      resources: 
+        namespaces:
+        - kube-system
+        - kyverno
+    mutate:
+      foreach:
+      - list: "request.object.spec.containers"
+        patchStrategicMerge:
+          spec:
+            containers:
+            - name: "{{ element.name }}" 
+              image: registry.digitalocean.com/runlevl4/{{ images.containers."{{element.name}}".path}}:{{images.containers."{{element.name}}".tag}}
+```
+
+And a quick test to ensure that both our label is included and the image is being pulled from our DOCR registry...
+
+```
+$ ./kyverno apply challenge_tasks/rule-enforce-docr.yaml --resource challenge_tasks/pass-mutate.yaml
+
+Applying 1 policy to 1 resource...
+(Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
+
+mutate policy enforce-docr applied to default/Deployment/challenge-pass:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: challenge-pass
+    desc: 2021-do-k8s-challenge
+  name: challenge-pass
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: challenge-pass
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: challenge-pass
+    spec:
+      containers:
+      - image: registry.digitalocean.com/runlevl4/nginx:latest
+        imagePullSecrets:
+        - name: runlevl4
+        name: nginx
+
+---
+
+Note I also added a pull secret for the registry. Next, I tagged `nginx:latest` from my local registry for DOCR and pushed it.
+
+```
+$ docker tag 605c77e624dd registry.digitalocean.com/runlevl4/nginx:latest
+
+$ docker push registry.digitalocean.com/runlevl4/nginx:latest
+The push refers to repository [registry.digitalocean.com/runlevl4/nginx]
+d874fd2bc83b: Pushed
+32ce5f6a5106: Pushed
+f1db227348d0: Pushed
+b8d6e692a25e: Pushed
+e379e8aedd4d: Pushed
+2edcec3590a4: Pushed
+latest: digest: sha256:ee89b00528ff4f02f2405e4ee221743ebc3f8e8dd0bfd5c4c20a2fa2aaa7ede3 size: 1570
+```
+
+pass: 1, fail: 0, warn: 0, error: 0, skip: 2
+```
+
+Everything looks good! Well, sort of...
+
+```
+kdo get po
+NAME                              READY   STATUS         RESTARTS   AGE
+challenge-pass-6dc9569f98-m6sqt   0/1     ErrImagePull   0          7s
+```
+
+Even though the pod didn't start, it means my test was a success. Originally I was pulling nginx directly. But it doesn't exist in my DOCR registry so it can't find it.
+
+```
+registry.digitalocean.com/runlevl4/runlevl4/nginx:latest: not found
+```
+
+> FULL DISCLOSURE
+> The mutation worked. The test works. However, when the Pod is actually created in the cluster, the registry name is getting doubled. That's a problem for another day.
+
+```
+# Test Generates
+image: registry.digitalocean.com/runlevl4/nginx:latest
+
+# Cluster Generates
+Back-off pulling image "registry.digitalocean.com/runlevl4/runlevl4/nginx:latest"
+```
+
+The source files for the manifests are located in the `challenge_tasks` folder along with the rules. Testing with the CLI, you can see that both files fail and pass appropriately.
+
+```
+$ ./kyverno apply challenge_tasks/rule-apply-label-to-deploy.yaml --resource challenge_tasks/fail-check.yaml 
+
+Applying 1 policy to 1 resource...
+(Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
+
+policy apply-label-to-deploy -> resource default/Deployment/challenge failed:
+1. apply-label-to-deploy: validation error: All Deployment resources need to be created with the following label: 'desc' and a value of '2021-do-k8s-challenge'. Rule apply-label-to-deploy failed at path /metadata/labels/desc/
+
+pass: 0, fail: 1, warn: 0, error: 0, skip: 0
+
+
+$ ./kyverno apply challenge_tasks/rule-apply-label-to-deploy.yaml --resource challenge_tasks/pass-mutate.yaml
+
+Applying 1 policy to 1 resource...
+(Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
+
+pass: 1, fail: 0, warn: 0, error: 0, skip: 0
+```
+
+## Creating a New Annotation Rule
 
 One of the things I have run into in my daily job is not always knowing who to contact when things go wrong. Development teams don't always follow the rules and namespaces do not always get created with a Point of Contact. Our policy is to have namespaces annotated so the admin team knows who to reach out to when we see issues. I decided to see how I could enforce this with Kyverno.
 

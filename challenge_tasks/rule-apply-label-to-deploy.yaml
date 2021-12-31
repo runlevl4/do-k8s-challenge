@@ -1,0 +1,20 @@
+apiVersion : kyverno.io/v1  
+kind: ClusterPolicy
+metadata:
+  name: apply-label-to-deploy
+spec:
+  background: false
+  validationFailureAction: enforce
+  rules:  
+  - name: apply-label-to-deploy
+    match:
+      any:
+      - resources:
+          kinds: 
+          - Deployment
+    validate:
+      message: "All Deployment resources need to be created with the following label: 'desc' and a value of '2021-do-k8s-challenge'"
+      pattern:       
+        metadata:
+          labels:
+            desc: "2021-do-k8s-challenge"

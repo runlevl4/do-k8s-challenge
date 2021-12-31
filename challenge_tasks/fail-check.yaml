@@ -1,0 +1,21 @@
+# This manifest should faile the policy check and not go anywhere.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: challenge-fail
+  name: challenge-fail
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: challenge-fail
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: challenge-fail
+    spec:
+      containers:
+      - image: nginx
+        name: nginx

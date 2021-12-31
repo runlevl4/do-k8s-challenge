@@ -1,0 +1,25 @@
+# This manifest should pass the label policy check and get mutated to ensure
+# that images only come from DOCR.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: challenge-pass
+    desc: 2021-do-k8s-challenge
+  name: challenge-pass
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: challenge-pass
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: challenge-pass
+    spec:
+      containers:
+      - image: nginx        
+        name: nginx
+      imagePullSecrets:
+        - name: runlevl4

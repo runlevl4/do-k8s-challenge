@@ -1,0 +1,26 @@
+apiVersion : kyverno.io/v1  
+kind: ClusterPolicy
+metadata:
+  name: enforce-docr
+spec:
+  validationFailureAction: enforce
+  rules:
+  - name: enforce-docr
+    match:
+      any:
+      - resources:
+          kinds: 
+          - Pod
+    exclude:
+      resources: 
+        namespaces:
+        - kube-system
+        - kyverno
+    mutate:
+      foreach:
+      - list: "request.object.spec.containers"
+        patchStrategicMerge:
+          spec:
+            containers:
+            - name: "{{ element.name }}" 
+              image: registry.digitalocean.com/runlevl4/{{ images.containers."{{element.name}}".path}}:{{images.containers."{{element.name}}".tag}}
