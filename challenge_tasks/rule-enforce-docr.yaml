@@ -23,4 +23,4 @@ spec:
           spec:
             containers:
             - name: "{{ element.name }}" 
-              image: registry.digitalocean.com/runlevl4/{{ images.containers."{{element.name}}".path}}:{{images.containers."{{element.name}}".tag}}
+              image: registry.digitalocean.com/runlevl4/{{ images.containers."{{element.name}}".name}}:{{images.containers."{{element.name}}".tag}}
