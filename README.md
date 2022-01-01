@@ -287,7 +287,7 @@ kind: Namespace
 metadata:
   name: good-poc
   annotations:
-    internal-poc: 'root@runlevl4.com'
+    internal-poc: 'root@myco.com'
 spec: {}
 status: {}
 ```
@@ -295,7 +295,7 @@ status: {}
 Next, I used the Kyverno CLI to test each manifest. You can see in the first example, the test failed. Exactly what I wanted.
 
 ```
-$ ./kyverno apply rules/rule-ns-poc.yaml --resource scenarios/ns-without-poc.yaml                                                                                                1 ✘
+$ ./kyverno apply rules/rule-ns-poc.yaml --resource scenarios/ns-without-poc.yaml
 
 Applying 1 policy to 1 resource...
 (Total number of result count may vary as the policy is mutated by Kyverno. To check the mutated policy please try with log level 5)
